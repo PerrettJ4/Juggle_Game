@@ -1,12 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
 import {
   Button,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
+  Dimensions,
 } from "react-native";
 import Animated, {
   Easing,
@@ -23,12 +23,27 @@ import {
   PanGestureHandler,
 } from "react-native-gesture-handler";
 
+const dimensions = Dimensions.get("screen");
+const SCREEN_WIDTH = dimensions.width;
+const SCREEN_HEIGHT = dimensions.height;
+
 const FPS = 60;
 const DELTA = 1000 / FPS;
-const SPEED = 10;
-const BALL_WIDTH = 25;
+const SPEED = 1;
+const GRAVITY = 0.2;
+let BOUNCE_FACTOR = 0.7;
 
-const islandDimensions = { x: 150, y: 11, w: 127, h: 37 };
+const BALL_WIDTH = SCREEN_WIDTH / 4;
+const BALL_RADIUS = BALL_WIDTH / 2;
+
+const PLAYER_WIDTH = SCREEN_WIDTH / 8;
+const PLAYER_HEIGHT = SCREEN_WIDTH / 8;
+const PLAYER_RADIUS = PLAYER_WIDTH / 2;
+
+const TOTAL_RADIUS = (BALL_RADIUS + PLAYER_RADIUS) * 1.01;
+
+const INITIAL_DIRECTION = { x: 0, y: 1 };
+const INITIAL_PLAYER_DIRECTION = { x: 0, y: 1 };
 
 const normalizeVector = (vector) => {
   const magnitude = Math.sqrt(vector.x * vector.x + vector.y * vector.y);
@@ -41,20 +56,17 @@ const normalizeVector = (vector) => {
 
 export default function Game() {
   const { height, width } = useWindowDimensions();
-  const playerDimensions = {
-    w: width / 2,
-    h: 37,
-  };
-
-  const [score, setScore] = useState(0);
+  const [score, setScore] = useState(true);
   const [gameOver, setGameOver] = useState(true);
 
-  const targetPositionX = useSharedValue(width / 2);
-  const targetPositionY = useSharedValue(height / 2);
-  const direction = useSharedValue(
-    normalizeVector({ x: Math.random(), y: Math.random() })
+  const targetPositionX = useSharedValue(0);
+  const targetPositionY = useSharedValue(0);
+  const direction = useSharedValue(normalizeVector(INITIAL_DIRECTION));
+
+  const playerPos = useSharedValue({ x: width / 4, y: height / 4 });
+  const playerDirection = useSharedValue(
+    normalizeVector(INITIAL_PLAYER_DIRECTION)
   );
-  const playerPos = useSharedValue({ x: width / 4, y: height - 100 });
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -66,59 +78,87 @@ export default function Game() {
     return () => clearInterval(interval);
   }, [gameOver]);
 
-  const update = () => {
-    let nextPos = getNextPos(direction.value);
-    let newDirection = direction.value;
+  const clampPaddlePosition = () => {
+    // const projectedX = playerDirection.value.x + playerPos.value.x;
+    // const projectedY = playerDirection.value.y + playerPos.value.y;
+    // if (projectedX > 512) {
+    //   Body.setPosition(paddle, { x: 512, y: paddle.position.y });
+    // }
+    // if (projectedX < 64) {
+    //   Body.setPosition(paddle, { x: 64, y: paddle.position.y });
+    // }
+    // if (projectedY > 904) {
+    //   Body.setPosition(paddle, { x: paddle.position.x, y: 904 });
+    // }
+    // if (projectedY < 64) {
+    //   Body.setPosition(paddle, { x: paddle.position.x, y: 64 });
+    // }
+  };
 
-    // Wall Hit detection
-    if (nextPos.y > height - BALL_WIDTH) {
-      setGameOver(true);
+  const update = useCallback(() => {
+    const clamp = 60;
+    if (direction.value.x > clamp) {
+      console.log("clamp");
+      direction.value = { ...direction, x: clamp };
     }
-    if (nextPos.y < 0) {
-      newDirection = { x: direction.value.x, y: -direction.value.y };
+    if (direction.value.y > clamp) {
+      direction.value = { ...direction, y: clamp };
+    }
+    clampPaddlePosition();
+
+    direction.value = { x: direction.value.x, y: direction.value.y + GRAVITY };
+    let velocity = direction.value;
+    let nextPos = getNextPos(velocity);
+    let newDirection = velocity;
+
+    // Bottom Wall
+    if (nextPos.y > height) {
+      newDirection = {
+        x: velocity.x,
+        y: -velocity.y * BOUNCE_FACTOR,
+      };
+      // setGameOver(true);
+    }
+    // Top Wall detection
+    if (nextPos.y < -height / 2) {
+      newDirection = {
+        x: velocity.x,
+        y: -velocity.y,
+      };
+    }
+    // Side Walls
+    if (nextPos.x < 0 || nextPos.x > SCREEN_WIDTH) {
+      newDirection = { x: -velocity.x, y: velocity.y };
     }
 
-    if (nextPos.x < 0 || nextPos.x > width - BALL_WIDTH) {
-      newDirection = { x: -direction.value.x, y: direction.value.y };
+    // Collision Hit
+    let dx = playerPos.value.x - targetPositionX.value;
+    let dy = playerPos.value.y - targetPositionY.value;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < TOTAL_RADIUS) {
+      // angles
+      let angle = Math.atan2(dy, dx);
+      let sin = Math.sin(angle);
+      let cos = Math.cos(angle);
+
+      // circle1 perpendicular velocities
+
+      let vx1 =
+        playerDirection.value.x / FPS + velocity.x * cos + velocity.y * sin;
+      let vy1 =
+        playerDirection.value.y / FPS + velocity.y * cos - velocity.x * sin;
+
+      newDirection = {
+        x: vx1,
+        y: vy1 * BOUNCE_FACTOR,
+      };
+
+      setScore(score + 1);
     }
 
-    // Island Hit detection
-    if (
-      nextPos.x < islandDimensions.x + islandDimensions.w &&
-      nextPos.x + BALL_WIDTH > islandDimensions.x &&
-      nextPos.y < islandDimensions.y + islandDimensions.h &&
-      BALL_WIDTH + nextPos.y > islandDimensions.y
-    ) {
-      if (
-        targetPositionX.value < islandDimensions.x ||
-        targetPositionX.value > islandDimensions.x + islandDimensions.w
-      ) {
-        newDirection = { x: -direction.value.x, y: direction.value.y };
-      } else {
-        newDirection = { x: direction.value.x, y: -direction.value.y };
-      }
-      setScore((s) => s + 1);
-    }
-
-    // Player Hit detection
-    if (
-      nextPos.x < playerPos.value.x + playerDimensions.w &&
-      nextPos.x + BALL_WIDTH > playerPos.value.x &&
-      nextPos.y < playerPos.value.y + playerDimensions.h &&
-      BALL_WIDTH + nextPos.y > playerPos.value.y
-    ) {
-      if (
-        targetPositionX.value < playerPos.value.x ||
-        targetPositionX.value > playerPos.value.x + playerDimensions.w
-      ) {
-        newDirection = { x: -direction.value.x, y: direction.value.y };
-      } else {
-        newDirection = { x: direction.value.x, y: -direction.value.y };
-      }
-    }
-
-    direction.value = newDirection;
-    nextPos = getNextPos(newDirection);
+    direction.value = { x: newDirection.x, y: newDirection.y + GRAVITY };
+    nextPos = getNextPos(direction.value);
 
     targetPositionX.value = withTiming(nextPos.x, {
       duration: DELTA,
@@ -128,21 +168,22 @@ export default function Game() {
       duration: DELTA,
       easing: Easing.linear,
     });
-  };
+  }, []);
 
-  const getNextPos = (direction) => {
+  const getNextPos = useCallback((direction) => {
     return {
       x: targetPositionX.value + direction.x * SPEED,
       y: targetPositionY.value + direction.y * SPEED,
     };
-  };
+  });
 
-  const restartGame = () => {
+  const restartGame = useCallback(() => {
     targetPositionX.value = width / 2;
-    targetPositionY.value = height / 2;
+    targetPositionY.value = height / 3;
+    direction.value = INITIAL_DIRECTION;
     setScore(0);
     setGameOver(false);
-  };
+  });
 
   const ballAnimatedStyles = useAnimatedStyle(() => {
     return {
@@ -151,37 +192,35 @@ export default function Game() {
     };
   });
 
-  const islandAnimatedStyles = useAnimatedStyle(
-    () => ({
-      width: withSequence(
-        withTiming(islandDimensions.w * 1.3),
-        withTiming(islandDimensions.w)
-      ),
-      height: withSequence(
-        withTiming(islandDimensions.h * 1.3),
-        withTiming(islandDimensions.h)
-      ),
-      opacity: withSequence(withTiming(0), withTiming(1)),
-    }),
-    [score]
-  );
-
   const playerAnimatedStyles = useAnimatedStyle(() => ({
     left: playerPos.value.x,
+    top: playerPos.value.y,
   }));
 
   const gestureHandler = useAnimatedGestureHandler({
     onActive: (event) => {
+      playerDirection.value = {
+        ...playerDirection.value,
+        x: event.velocityX,
+        y: event.velocityY,
+      };
       playerPos.value = {
         ...playerPos.value,
-        x: event.absoluteX - playerDimensions.w / 2,
+        x: event.absoluteX,
+        y: event.absoluteY,
       };
     },
   });
 
+  const fingerOff = () => {
+    playerDirection.value = INITIAL_PLAYER_DIRECTION;
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.score}>{score}</Text>
+      <Text style={styles.score} onPress={restartGame}>
+        {score}
+      </Text>
       {gameOver && (
         <View style={styles.gameOverContainer}>
           <Text style={styles.gameOver}>Game over</Text>
@@ -191,44 +230,12 @@ export default function Game() {
 
       {!gameOver && <Animated.View style={[styles.ball, ballAnimatedStyles]} />}
 
-      {/* Island */}
-      <Animated.View
-        entering={BounceIn}
-        key={score}
-        style={{
-          position: "absolute",
-          top: islandDimensions.y,
-          left: islandDimensions.x,
-          width: islandDimensions.w,
-          height: islandDimensions.h,
-          borderRadius: 20,
-          backgroundColor: "black",
-        }}
-      />
-
       {/* Player */}
-      <Animated.View
-        style={[
-          {
-            top: playerPos.value.y,
-            position: "absolute",
-            width: playerDimensions.w,
-            height: playerDimensions.h,
-            borderRadius: 20,
-            backgroundColor: "black",
-          },
-          playerAnimatedStyles,
-        ]}
-      />
 
-      <PanGestureHandler onGestureEvent={gestureHandler}>
+      <PanGestureHandler onGestureEvent={gestureHandler} onEnded={fingerOff}>
         <Animated.View
-          style={{
-            width: "100%",
-            height: 200,
-            position: "absolute",
-            bottom: 0,
-          }}
+          style={[styles.player, playerAnimatedStyles]}
+          onTouchMove={gestureHandler}
         />
       </PanGestureHandler>
     </View>
@@ -243,11 +250,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   ball: {
-    backgroundColor: "black",
+    borderWidth: 8,
+    borderColor: "black",
+    backgroundColor: "white",
     width: BALL_WIDTH,
     aspectRatio: 1,
-    borderRadius: 25,
+    borderRadius: 999,
     position: "absolute",
+    transform: [{ translateX: -BALL_RADIUS }, { translateY: -BALL_RADIUS }],
+  },
+  player: {
+    borderWidth: 5,
+    borderColor: "black",
+    position: "absolute",
+    width: PLAYER_WIDTH,
+    height: PLAYER_HEIGHT,
+    borderRadius: 999,
+    backgroundColor: "cyan",
+    transform: [{ translateX: -PLAYER_RADIUS }, { translateY: -PLAYER_RADIUS }],
   },
   score: {
     fontSize: 150,
