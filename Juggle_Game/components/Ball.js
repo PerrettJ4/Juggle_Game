@@ -13,48 +13,19 @@ function update(circle) {
   circle.y += -circle.y * 0.001;
 }
 
-const Ball = () => {
-  const [state, dispatch] = React.useReducer(reducer, initialState);
-
-  const tick = React.useCallback(() => {
-    dispatch("TICK");
-  }, []);
-
-  const handleClick = React.useCallback(() => {
-    dispatch("CLICK");
-  }, []);
-
-  React.useEffect(() => {
-    const id = setInterval(tick, 1000 / 60);
-
-    return () => clearInterval(id);
-  }, [tick]);
-
-  const pan = useRef(new Animated.ValueXY()).current;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-        useNativeDriver: true,
-      }),
-      onPanResponderRelease: () => {
-        pan.extractOffset();
-      },
-    })
-  ).current;
-
+const Ball = ({ state }) => {
   return (
-    <View style={styles.container}>
-      <Animated.View
-        style={{
-          transform: [{ translateX: pan.x }, { translateY: state.position }],
-        }}
-        {...panResponder.panHandlers}
-      >
-        <View style={styles.box} />
-      </Animated.View>
-    </View>
+    <View
+      style={[
+        styles.box,
+        {
+          transform: [
+            { translateX: state.position.x },
+            { translateY: state.position.y },
+          ],
+        },
+      ]}
+    ></View>
   );
 };
 

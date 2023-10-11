@@ -1,5 +1,5 @@
 const JUMP_IMPULSE = 10;
-const GRAVITY = -0.1;
+const GRAVITY = -0.01;
 
 export const reducer = (state, event) => {
   switch (event) {
@@ -17,16 +17,17 @@ export const reducer = (state, event) => {
       if (state.ballState === "idle") return state;
 
       const nextDelta = state.delta - GRAVITY;
-      const nextPosition = state.position + nextDelta;
+      const nextY = state.position.y + nextDelta;
+      const nextX = state.position.x;
 
-      if (nextPosition <= 0) {
+      if (nextY <= 0) {
         return initialState;
       }
 
       return {
         ballState: "jumping",
         delta: nextDelta,
-        position: nextPosition,
+        position: { x: nextX, y: nextY },
       };
     }
 

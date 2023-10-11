@@ -2,14 +2,12 @@ import React, { useRef } from "react";
 import { Animated, View, StyleSheet, PanResponder, Text } from "react-native";
 import { Reducer } from "react";
 
-const Foot = () => {
-  const pan = useRef(new Animated.ValueXY()).current;
-
+const Foot = ({ pan }) => {
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: () => true,
       onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       onPanResponderRelease: () => {
         pan.extractOffset();
@@ -18,16 +16,15 @@ const Foot = () => {
   ).current;
 
   return (
-    <View style={styles.container}>
-      <Animated.View
-        style={{
+    <Animated.View
+      style={[
+        styles.box,
+        {
           transform: [{ translateX: pan.x }, { translateY: pan.y }],
-        }}
-        {...panResponder.panHandlers}
-      >
-        <View style={styles.box} />
-      </Animated.View>
-    </View>
+        },
+      ]}
+      {...panResponder.panHandlers}
+    ></Animated.View>
   );
 };
 
